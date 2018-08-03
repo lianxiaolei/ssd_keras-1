@@ -26,6 +26,7 @@ import keras.backend as K
 from keras.engine.topology import InputSpec
 from keras.engine.topology import Layer
 
+
 class DecodeDetectionsFast(Layer):
     '''
     A Keras layer to decode the raw SSD prediction output.
@@ -75,10 +76,14 @@ class DecodeDetectionsFast(Layer):
             img_width (int, optional): The width of the input images. Only needed if `normalize_coords` is `True`.
         '''
         if K.backend() != 'tensorflow':
-            raise TypeError("This layer only supports TensorFlow at the moment, but you are using the {} backend.".format(K.backend()))
+            raise TypeError(
+                "This layer only supports TensorFlow at the moment, but you are using the {} backend.".format(
+                    K.backend()))
 
         if normalize_coords and ((img_height is None) or (img_width is None)):
-            raise ValueError("If relative box coordinates are supposed to be converted to absolute coordinates, the decoder needs the image size in order to decode the predictions, but `img_height == {}` and `img_width == {}`".format(img_height, img_width))
+            raise ValueError(
+                "If relative box coordinates are supposed to be converted to absolute coordinates, the decoder needs the image size in order to decode the predictions, but `img_height == {}` and `img_width == {}`".format(
+                    img_height, img_width))
 
         if coords != 'centroids':
             raise ValueError("The DetectionOutput layer currently only supports the 'centroids' coordinate format.")
@@ -123,15 +128,17 @@ class DecodeDetectionsFast(Layer):
         #####################################################################################
 
         # Extract the predicted class IDs as the indices of the highest confidence values.
-        class_ids = tf.expand_dims(tf.to_float(tf.argmax(y_pred[...,:-12], axis=-1)), axis=-1)
+        class_ids = tf.expand_dims(tf.to_float(tf.argmax(y_pred[..., :-12], axis=-1)), axis=-1)
         # Extract the confidences of the maximal classes.
-        confidences = tf.reduce_max(y_pred[...,:-12], axis=-1, keep_dims=True)
+        confidences = tf.reduce_max(y_pred[..., :-12], axis=-1, keep_dims=True)
 
         # Convert anchor box offsets to image offsets.
-        cx = y_pred[...,-12] * y_pred[...,-4] * y_pred[...,-6] + y_pred[...,-8] # cx = cx_pred * cx_variance * w_anchor + cx_anchor
-        cy = y_pred[...,-11] * y_pred[...,-3] * y_pred[...,-5] + y_pred[...,-7] # cy = cy_pred * cy_variance * h_anchor + cy_anchor
-        w = tf.exp(y_pred[...,-10] * y_pred[...,-2]) * y_pred[...,-6] # w = exp(w_pred * variance_w) * w_anchor
-        h = tf.exp(y_pred[...,-9] * y_pred[...,-1]) * y_pred[...,-5] # h = exp(h_pred * variance_h) * h_anchor
+        cx = y_pred[..., -12] * y_pred[..., -4] * y_pred[..., -6] + y_pred[
+            ..., -8]  # cx = cx_pred * cx_variance * w_anchor + cx_anchor
+        cy = y_pred[..., -11] * y_pred[..., -3] * y_pred[..., -5] + y_pred[
+            ..., -7]  # cy = cy_pred * cy_variance * h_anchor + cy_anchor
+        w = tf.exp(y_pred[..., -10] * y_pred[..., -2]) * y_pred[..., -6]  # w = exp(w_pred * variance_w) * w_anchor
+        h = tf.exp(y_pred[..., -9] * y_pred[..., -1]) * y_pred[..., -5]  # h = exp(h_pred * variance_h) * h_anchor
 
         # Convert 'centroids' to 'corners'.
         xmin = cx - 0.5 * w
@@ -147,8 +154,11 @@ class DecodeDetectionsFast(Layer):
             xmax1 = tf.expand_dims(xmax * self.tf_img_width, axis=-1)
             ymax1 = tf.expand_dims(ymax * self.tf_img_height, axis=-1)
             return xmin1, ymin1, xmax1, ymax1
+
         def non_normalized_coords():
-            return tf.expand_dims(xmin, axis=-1), tf.expand_dims(ymin, axis=-1), tf.expand_dims(xmax, axis=-1), tf.expand_dims(ymax, axis=-1)
+            return tf.expand_dims(xmin, axis=-1), tf.expand_dims(ymin, axis=-1), tf.expand_dims(xmax,
+                                                                                                axis=-1), tf.expand_dims(
+                ymax, axis=-1)
 
         xmin, ymin, xmax, ymax = tf.cond(self.tf_normalize_coords, normalized_coords, non_normalized_coords)
 
@@ -159,7 +169,7 @@ class DecodeDetectionsFast(Layer):
         # 2. Perform confidence thresholding, non-maximum suppression, and top-k filtering.
         #####################################################################################
 
-        batch_size = tf.shape(y_pred)[0] # Output dtype: tf.int32
+        batch_size = tf.shape(y_pred)[0]  # Output dtype: tf.int32
         n_boxes = tf.shape(y_pred)[1]
         n_classes = y_pred.shape[2] - 4
         class_indices = tf.range(1, n_classes)
@@ -169,31 +179,32 @@ class DecodeDetectionsFast(Layer):
         # - non-maximum suppression (NMS)
         # - top-k filtering
         def filter_predictions(batch_item):
-
             # Keep only the non-background boxes.
-            positive_boxes = tf.not_equal(batch_item[...,0], 0.0)
+            positive_boxes = tf.not_equal(batch_item[..., 0], 0.0)
             predictions = tf.boolean_mask(tensor=batch_item,
                                           mask=positive_boxes)
 
             def perform_confidence_thresholding():
                 # Apply confidence thresholding.
-                threshold_met = predictions[:,1] > self.tf_confidence_thresh
+                threshold_met = predictions[:, 1] > self.tf_confidence_thresh
                 return tf.boolean_mask(tensor=predictions,
                                        mask=threshold_met)
+
             def no_positive_boxes():
-                return tf.constant(value=0.0, shape=(1,6))
+                return tf.constant(value=0.0, shape=(1, 6))
 
             # If there are any positive predictions, perform confidence thresholding.
-            predictions_conf_thresh = tf.cond(tf.equal(tf.size(predictions), 0), no_positive_boxes, perform_confidence_thresholding)
+            predictions_conf_thresh = tf.cond(tf.equal(tf.size(predictions), 0), no_positive_boxes,
+                                              perform_confidence_thresholding)
 
             def perform_nms():
-                scores = predictions_conf_thresh[...,1]
+                scores = predictions_conf_thresh[..., 1]
 
                 # `tf.image.non_max_suppression()` needs the box coordinates in the format `(ymin, xmin, ymax, xmax)`.
-                xmin = tf.expand_dims(predictions_conf_thresh[...,-4], axis=-1)
-                ymin = tf.expand_dims(predictions_conf_thresh[...,-3], axis=-1)
-                xmax = tf.expand_dims(predictions_conf_thresh[...,-2], axis=-1)
-                ymax = tf.expand_dims(predictions_conf_thresh[...,-1], axis=-1)
+                xmin = tf.expand_dims(predictions_conf_thresh[..., -4], axis=-1)
+                ymin = tf.expand_dims(predictions_conf_thresh[..., -3], axis=-1)
+                xmax = tf.expand_dims(predictions_conf_thresh[..., -2], axis=-1)
+                ymax = tf.expand_dims(predictions_conf_thresh[..., -1], axis=-1)
                 boxes = tf.concat(values=[ymin, xmin, ymax, xmax], axis=-1)
 
                 maxima_indices = tf.image.non_max_suppression(boxes=boxes,
@@ -205,11 +216,13 @@ class DecodeDetectionsFast(Layer):
                                    indices=maxima_indices,
                                    axis=0)
                 return maxima
+
             def no_confident_predictions():
-                return tf.constant(value=0.0, shape=(1,6))
+                return tf.constant(value=0.0, shape=(1, 6))
 
             # If any boxes made the threshold, perform NMS.
-            predictions_nms = tf.cond(tf.equal(tf.size(predictions_conf_thresh), 0), no_confident_predictions, perform_nms)
+            predictions_nms = tf.cond(tf.equal(tf.size(predictions_conf_thresh), 0), no_confident_predictions,
+                                      perform_nms)
 
             # Perform top-k filtering for this batch item or pad it in case there are
             # fewer than `self.top_k` boxes left at this point. Either way, produce a
@@ -222,6 +235,7 @@ class DecodeDetectionsFast(Layer):
                 return tf.gather(params=predictions_nms,
                                  indices=tf.nn.top_k(predictions_nms[:, 1], k=self.tf_top_k, sorted=True).indices,
                                  axis=0)
+
             def pad_and_top_k():
                 padded_predictions = tf.pad(tensor=predictions_nms,
                                             paddings=[[0, self.tf_top_k - tf.shape(predictions_nms)[0]], [0, 0]],
@@ -249,7 +263,7 @@ class DecodeDetectionsFast(Layer):
 
     def compute_output_shape(self, input_shape):
         batch_size, n_boxes, last_axis = input_shape
-        return (batch_size, self.tf_top_k, 6) # Last axis: (class_ID, confidence, 4 box coordinates)
+        return (batch_size, self.tf_top_k, 6)  # Last axis: (class_ID, confidence, 4 box coordinates)
 
     def get_config(self):
         config = {

@@ -215,7 +215,7 @@ class AnchorBoxes(Layer):
         # where the last dimension will contain `(cx, cy, w, h)`
         boxes_tensor = np.zeros((feature_map_height, feature_map_width, self.n_boxes, 4))
 
-        boxes_tensor[:, :, :, 0] = np.tile(cx_grid, (1, 1, self.n_boxes))  # Set cx
+        boxes_tensor[:, :, :, 0] = np.tile(cx_grid, (1, 1, self.n_boxes))  # Set cx n_boxes指由ar带来的一个锚点上的box数
         boxes_tensor[:, :, :, 1] = np.tile(cy_grid, (1, 1, self.n_boxes))  # Set cy
         boxes_tensor[:, :, :, 2] = wh_list[:, 0]  # Set w
         boxes_tensor[:, :, :, 3] = wh_list[:, 1]  # Set h
